@@ -1,11 +1,11 @@
 /* Lantern English service worker: offline reading for installed / revisited devices.
    VERSION is stamped by tools/make-site.mjs; "dev" means an unstamped checkout. */
-const VERSION = "b6460883e4";
+const VERSION = "35941e7851";
 const CACHE = "lantern-" + VERSION;
 const SHELL = [
   "./", "index.html", "manifest.webmanifest",
   "assets/css/style.css", "assets/js/lemmatize.js", "assets/js/app.js",
-  "data/library.js", "data/dict.js",
+  "data/library.js", "data/dict.js", "data/videos.js",
   "assets/icons/icon.svg", "assets/icons/icon-192.png", "assets/icons/icon-512.png",
 ];
 
@@ -31,6 +31,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   const sameOrigin = url.origin === self.location.origin;
   const isFont = url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com";
+  // External movies are streamed from the credited source, never downloaded into the offline cache.
   if (!sameOrigin && !isFont) return;
 
   // stale-while-revalidate: instant from cache, refreshed in the background for the next visit
