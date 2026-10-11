@@ -1,6 +1,6 @@
 /* Lantern English service worker: offline reading for installed / revisited devices.
    VERSION is stamped by tools/make-site.mjs; "dev" means an unstamped checkout. */
-const VERSION = "f60e01921d";
+const VERSION = "d60a4213e0";
 const CACHE = "lantern-" + VERSION;
 const SHELL = [
   "./", "index.html", "manifest.webmanifest",
