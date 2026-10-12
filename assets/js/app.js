@@ -765,10 +765,10 @@
 
   // Shelves on #videos, in display order. Keep ids in sync with VIDEO_CATEGORIES in tools/video-content.mjs.
   const VIDEO_CATEGORIES = [
-    { id: "fun", label: "Eğlenceli", note: "Gülümseten kısa animasyonlar" },
+    { id: "fun", label: "Eğlenceli", note: "Komik skeçler ve kısa animasyonlar" },
     { id: "adventure", label: "Macera ve fantastik", note: "Ejderhalar, sırlar ve masal dünyaları" },
     { id: "scifi", label: "Bilim kurgu", note: "Gelecek, robotlar ve tuhaf dünyalar" },
-    { id: "real", label: "Gerçek hayat ve uzay", note: "Astronotlar ve bilim insanları anlatıyor" },
+    { id: "real", label: "Gerçek hayat ve uzay", note: "Günlük hayat, doğa ve uzay" },
   ];
   const videoCategory = (v) => VIDEO_CATEGORIES.find((c) => c.id === v.category) || VIDEO_CATEGORIES[0];
   const levelRank = (id) => LEVELS.findIndex((l) => l.id === id);
@@ -814,9 +814,9 @@
       <header class="reader-head"><div class="card-top"><span class="lvl lvl-${esc(v.level)}">${esc(v.level)}</span><span>${esc(videoCategory(v).label)} · Altyazı destekli · ${videoTime(v.durationSeconds)}</span></div>
         <h1>${esc(v.title)}</h1><p class="by">${esc(v.creator)} · ${v.year}</p><p class="lead">${esc(v.summaryTr)}</p>
         <p class="video-level-note">${esc(v.levelNoteTr)}</p>${v.advisoryTr ? `<p class="video-advisory">${esc(v.advisoryTr)}</p>` : ""}</header>
-      <div class="video-stage" id="video-stage"><div class="video-frame" id="video-frame"><div class="video-placeholder" id="video-placeholder"><span aria-hidden="true">${ICON.play}</span><p>İngilizce kısa film · ${videoTime(v.durationSeconds)}</p>
+      <div class="video-stage" id="video-stage"><div class="video-frame" id="video-frame"><div class="video-placeholder" id="video-placeholder"><span aria-hidden="true">${ICON.play}</span><p>İngilizce video · ${videoTime(v.durationSeconds)}</p>
         <button class="btn primary" id="video-start" type="button">Videoyu başlat</button><p class="video-load-note">Video için internet bağlantısı gerekir. Oynatma başladığında yüklenir.</p></div>
-        <video id="video-player" playsinline webkit-playsinline preload="none" aria-label="${esc(v.title)} İngilizce kısa film" hidden></video>
+        <video id="video-player" playsinline webkit-playsinline preload="none" aria-label="${esc(v.title)} İngilizce video" hidden></video>
         <div class="reader-text video-captions" id="video-captions" lang="en" aria-describedby="caption-help"></div>
         <div class="seek-flash seek-back" id="seek-back" hidden aria-hidden="true">−5 sn</div>
         <div class="seek-flash seek-fwd" id="seek-fwd" hidden aria-hidden="true">+5 sn</div>
@@ -861,9 +861,9 @@
           <button class="btn sm" id="video-fullscreen" type="button" disabled>Tam ekran</button>
           <button class="btn sm" id="cap-settings-btn" type="button" aria-expanded="false" aria-controls="cap-settings">${ICON.gear} Ayarlar</button></div>
       </section>
-      <p class="video-credit">Film: <a id="video-source" href="${esc(v.source.watchUrl || v.source.url)}" target="_blank" rel="noopener">${esc(v.source.name)} · Resmî sayfada izle</a>.
+      <p class="video-credit">Video: <a id="video-source" href="${esc(v.source.watchUrl || v.source.url)}" target="_blank" rel="noopener">${esc(v.source.name)} · Resmî sayfada izle</a>.
         ${esc(v.source.credit)} · <a href="${esc(v.source.licenseUrl)}" target="_blank" rel="noopener">${esc(v.source.license)}</a>.
-        <a href="${esc(v.subtitleSource.url)}" target="_blank" rel="noopener">${esc(v.subtitleSource.name)}</a> · ${v.subtitleSource.licenseUrl ? `<a href="${esc(v.subtitleSource.licenseUrl)}" target="_blank" rel="noopener">${esc(v.subtitleSource.license)}</a>` : esc(v.subtitleSource.license)}. ${v.subtitleSource.credit ? esc(v.subtitleSource.credit) + ". " : ""}${v.subtitleSource.changeNoteTr ? esc(v.subtitleSource.changeNoteTr) + " " : ""}Film, kapanış jeneriğiyle birlikte oynatılır. Türkçe öğrenme açıklamaları Lantern English tarafından hazırlanmıştır.</p>
+        <a href="${esc(v.subtitleSource.url)}" target="_blank" rel="noopener">${esc(v.subtitleSource.name)}</a> · ${v.subtitleSource.licenseUrl ? `<a href="${esc(v.subtitleSource.licenseUrl)}" target="_blank" rel="noopener">${esc(v.subtitleSource.license)}</a>` : esc(v.subtitleSource.license)}. ${v.subtitleSource.credit ? esc(v.subtitleSource.credit) + ". " : ""}${v.subtitleSource.changeNoteTr ? esc(v.subtitleSource.changeNoteTr) + " " : ""}Video bütünüyle oynatılır. Türkçe öğrenme açıklamaları Lantern English tarafından hazırlanmıştır.</p>
     </article>`;
     const player = document.getElementById("video-player");
     const captions = document.getElementById("video-captions");
