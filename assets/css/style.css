@@ -284,6 +284,7 @@ h1, h2, h3 { font-family: var(--f-display); font-weight: 400; text-wrap: balance
 .btn:disabled:hover { background: var(--bg-2); border-color: var(--line); }
 .page-status { margin: 0 0 22px; color: var(--fg-3); font-size: 13px; font-variant-numeric: tabular-nums; scroll-margin-top: 160px; }
 .w { cursor: help; border-radius: 3px; transition: background .1s; }
+.reader-text .w { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 .w:hover, .w.on { background: rgba(241, 182, 95, .22); background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .w.saved { text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 1.5px; text-underline-offset: 4px; }
 .ph { border-bottom: 1px dashed rgba(241, 182, 95, .55); border-bottom: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent); }
@@ -325,6 +326,11 @@ h1, h2, h3 { font-family: var(--f-display); font-weight: 400; text-wrap: balance
   pointer-events: none; animation: tipIn .12s ease-out;
 }
 .tip.pinned { pointer-events: auto; }
+.tip.sentence-tip { width: 400px; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); overflow-y: auto; overscroll-behavior: contain; }
+.tip-sentence { margin: 10px 0; color: var(--fg-2); font: 14px/1.6 var(--f-read); }
+.sentence-tip .tip-tr { padding-top: 10px; border-top: 1px solid #343b4e; }
+.sentence-tip .tip-actions svg { width: 15px; height: 15px; }
+.reader-help { margin: 14px 0; color: var(--fg-2); font-size: 13px; }
 @keyframes tipIn { from { opacity: 0; transform: translateY(4px); } }
 .tip-head { display: flex; align-items: center; gap: 8px; }
 .tip-word { font: 600 17px/1.2 var(--f-read); color: var(--fg); }

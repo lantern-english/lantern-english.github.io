@@ -204,9 +204,11 @@
   // ---------- tooltip ----------
   const Tip = {
     el: document.getElementById("tip"),
-    span: null, text: null, pinned: false, timer: 0,
+    span: null, text: null, pinned: false, timer: 0, request: 0, sentence: "",
     show(span, text, pin) {
       clearTimeout(this.timer);
+      this.request++; this.sentence = "";
+      this.el.classList.remove("sentence-tip");
       if (this.span && this.span !== span) this.span.classList.remove("on");
       this.span = span; this.text = text; this.pinned = !!pin;
       this.el.innerHTML = this.content(span, text, pin);
@@ -217,6 +219,7 @@
     },
     hide() {
       clearTimeout(this.timer);
+      this.request++; this.sentence = "";
       this.el.hidden = true; this.pinned = false;
       if (this.span) this.span.classList.remove("on");
       this.span = null;
@@ -242,7 +245,7 @@
       let top = r.top - th - 10;
       if (top < 70) top = r.bottom + 10;
       this.el.style.left = left + "px";
-      this.el.style.top = top + "px";
+      this.el.style.top = Math.min(Math.max(8, top), Math.max(8, window.innerHeight - th - 8)) + "px";
     },
     content(span, text, pin) {
       const raw = span.textContent;
@@ -268,6 +271,7 @@
       if (phrase) h += `<div class="tip-ctx"><b>İfade · ${esc(phrase.en)}</b><br>${esc(phrase.tr)}</div>`;
       if (pin) {
         h += `<div class="tip-actions">`;
+        h += `<button class="btn sm" data-act="sentence">Cümleyi çevir</button>`;
         if (hit || ctx) h += `<button class="btn sm${saved ? "" : " primary"}" data-act="save">${saved ? ICON.starFill + " Defterde" : ICON.star + " Deftere ekle"}</button>`;
         if (phrase) h += `<button class="btn sm" data-act="savePhrase">${words[phrase.en.toLowerCase()] ? ICON.starFill + " İfade defterde" : ICON.star + " İfadeyi ekle"}</button>`;
         h += `<a class="btn sm ghost" href="https://tureng.com/tr/turkce-ingilizce/${encodeURIComponent(lemma)}" target="_blank" rel="noopener">${ICON.ext} Tureng</a></div>`;
@@ -278,7 +282,8 @@
     },
   };
 
-  function sentenceAround(span) {
+  // Keep the full sentence for translation; notebook excerpts stay short.
+  function fullSentenceAround(span) {
     const block = span.closest("p, h2");
     if (!block) return "";
     const range = document.createRange();
@@ -286,12 +291,105 @@
     range.setEndBefore(span);
     const off = range.toString().length;
     const all = block.textContent;
-    let s = off, e = off + span.textContent.length;
-    while (s > 0 && !/[.!?]/.test(all[s - 1])) s--;
-    while (e < all.length && !/[.!?]/.test(all[e])) e++;
-    while (e < all.length && /[.!?”’"]/.test(all[e])) e++;
-    const sent = all.slice(s, e).trim();
+    // Honour titles, initials and decimals, including on older mobile browsers.
+    let start = 0;
+    for (let i = 0; i < all.length; i++) {
+      if (!/[.!?]/.test(all[i])) continue;
+      if (all[i] === ".") {
+        if (/\d/.test(all[i - 1] || "") && /\d/.test(all[i + 1] || "")) continue;
+        const before = all.slice(start, i + 1);
+        if (/\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|e\.g|i\.e)\.$/i.test(before) || /\b[A-Z]\.$/.test(before)) continue;
+      }
+      let end = i + 1;
+      while (end < all.length && /[.!?”’"'\])]/.test(all[end])) end++;
+      if (end < all.length && !/\s/.test(all[end])) continue;
+      if (off < end) return all.slice(start, end).trim();
+      start = end; i = end - 1;
+    }
+    return all.slice(start).trim();
+  }
+
+  function sentenceAround(span) {
+    const sent = fullSentenceAround(span);
     return sent.length > 240 ? sent.slice(0, 237) + "…" : sent;
+  }
+
+  const sentenceCache = new Map((() => {
+    const saved = S.load("sentenceTranslations", []);
+    return Array.isArray(saved) ? saved.filter((v) => Array.isArray(v) && typeof v[0] === "string" && typeof v[1] === "string").slice(-200) : [];
+  })());
+  const sentencePending = new Map();
+  function translationChunks(sentence) {
+    // MyMemory accepts at most 500 UTF-8 bytes per request. Never truncate.
+    const chunks = []; let chunk = "", bytes = 0;
+    for (const ch of sentence) {
+      const n = encodeURIComponent(ch).replace(/%[0-9A-F]{2}|./g, "x").length;
+      if (bytes + n > 480) {
+        const space = chunk.lastIndexOf(" ");
+        if (space > 0) { chunks.push(chunk.slice(0, space)); chunk = chunk.slice(space + 1); }
+        else { chunks.push(chunk); chunk = ""; }
+        bytes = encodeURIComponent(chunk).replace(/%[0-9A-F]{2}|./g, "x").length;
+      }
+      chunk += ch; bytes += n;
+    }
+    if (chunk.trim()) chunks.push(chunk.trim());
+    return chunks;
+  }
+  async function translateSentence(sentence) {
+    if (sentenceCache.has(sentence)) return sentenceCache.get(sentence);
+    if (sentencePending.has(sentence)) return sentencePending.get(sentence);
+    const job = (async () => {
+      const translated = [];
+      for (const chunk of translationChunks(sentence)) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 12000);
+        try {
+          const response = await fetch("https://api.mymemory.translated.net/get?langpair=en%7Ctr&q=" + encodeURIComponent(chunk), { signal: controller.signal, credentials: "omit", referrerPolicy: "no-referrer" });
+          if (!response.ok) throw new Error("translation unavailable");
+          const data = await response.json();
+          if (+data.responseStatus !== 200 || data.quotaFinished || typeof data.responseData?.translatedText !== "string" || !data.responseData.translatedText.trim()) throw new Error("translation unavailable");
+          // Some responses contain HTML entities. Decode as text, never render API HTML.
+          const decoder = document.createElement("textarea");
+          decoder.innerHTML = esc(data.responseData.translatedText).replace(/&amp;/g, "&");
+          translated.push(decoder.value.trim());
+        } finally { clearTimeout(timeout); }
+      }
+      const result = translated.join(" ");
+      sentenceCache.set(sentence, result);
+      if (sentenceCache.size > 200) sentenceCache.delete(sentenceCache.keys().next().value);
+      S.save("sentenceTranslations", [...sentenceCache]);
+      return result;
+    })();
+    sentencePending.set(sentence, job);
+    try { return await job; } finally { sentencePending.delete(sentence); }
+  }
+
+  async function showSentence(span, text) {
+    const sentence = fullSentenceAround(span);
+    if (!sentence) return;
+    Tip.show(span, text, true);
+    const request = Tip.request;
+    Tip.sentence = sentence;
+    Tip.el.classList.add("sentence-tip");
+    Tip.el.innerHTML = `<div class="tip-head"><span class="tip-word">Cümlenin anlamı</span><button class="icon-btn" data-act="close" aria-label="Çeviriyi kapat">×</button></div>
+      <p class="tip-sentence" lang="en">${esc(sentence)}</p>
+      <div class="tip-tr" role="status" aria-live="polite" aria-busy="true">Çevriliyor…</div>
+      <div class="tip-actions"><button class="btn sm" data-act="speakSentence">${ICON.speak} Cümleyi dinle</button><a class="btn sm ghost" href="https://translate.google.com/?sl=en&tl=tr&text=${encodeURIComponent(sentence)}&op=translate" target="_blank" rel="noopener">${ICON.ext} Google Çeviri</a></div>
+      <div class="tip-hint">Otomatik çeviri · MyMemory. İlk çeviri için internet gerekir.</div>`;
+    Tip.place();
+    try {
+      const tr = await translateSentence(sentence);
+      if (Tip.request !== request || !span.isConnected) return;
+      Tip.el.querySelector(".tip-tr").textContent = tr;
+    } catch (e) {
+      if (Tip.request !== request || !span.isConnected) return;
+      Tip.el.querySelector(".tip-tr").textContent = navigator.onLine === false ? "Çeviri için internete bağlan. Daha önce çevirdiğin cümleler çevrimdışı da açılır." : "Çeviri şu an alınamadı. Tekrar dene veya Google Çeviri’de aç.";
+      Tip.el.querySelector(".tip-actions").insertAdjacentHTML("afterbegin", '<button class="btn sm" data-act="sentence">Tekrar dene</button>');
+    }
+    if (Tip.request === request) {
+      Tip.el.querySelector(".tip-tr").setAttribute("aria-busy", "false");
+      Tip.place();
+    }
   }
 
   function toggleSave(span, text) {
@@ -316,6 +414,31 @@
   }
 
   function bindText(root, text) {
+    let hold = null, suppressed = null, suppressUntil = 0;
+    const cancelHold = () => { if (hold) clearTimeout(hold.timer); hold = null; };
+    root.addEventListener("pointerdown", (ev) => {
+      cancelHold();
+      const sp = ev.target.closest(".w");
+      if (!sp || !ev.isPrimary || ev.button !== 0) return;
+      suppressed = null;
+      hold = { sp, x: ev.clientX, y: ev.clientY, id: ev.pointerId, fired: false, timer: 0 };
+      const current = hold;
+      current.timer = setTimeout(() => {
+        if (hold !== current || !sp.isConnected) return;
+        current.fired = true; suppressed = sp; suppressUntil = Date.now() + 1500;
+        showSentence(sp, text);
+      }, 550);
+    });
+    root.addEventListener("pointermove", (ev) => {
+      if (hold && ev.pointerId === hold.id && Math.hypot(ev.clientX - hold.x, ev.clientY - hold.y) > 10) cancelHold();
+    }, { passive: true });
+    root.addEventListener("pointerup", () => { if (hold?.fired) suppressUntil = Date.now() + 1500; cancelHold(); });
+    root.addEventListener("pointercancel", cancelHold);
+    root.addEventListener("pointerleave", cancelHold);
+    root.addEventListener("contextmenu", (ev) => {
+      // Touch callouts can precede pointerup; retain the timer on a stationary hold.
+      if ((hold || (suppressed && Date.now() < suppressUntil)) && ev.target.closest(".w")) ev.preventDefault();
+    });
     root.addEventListener("mouseover", (ev) => {
       if (!hoverDevice || prefs.mode !== "hover" || Tip.pinned) return;
       const sp = ev.target.closest(".w");
@@ -332,6 +455,8 @@
       const sp = ev.target.closest(".w");
       if (!sp) return;
       ev.stopPropagation();
+      cancelHold();
+      if (sp === suppressed && Date.now() < suppressUntil) { suppressed = null; ev.preventDefault(); return; }
       if (Tip.pinned && Tip.span === sp) { Tip.hide(); return; }
       Tip.show(sp, text, true);
     });
@@ -341,6 +466,9 @@
     const b = ev.target.closest("[data-act]");
     if (!b || !Tip.span) return;
     ev.stopPropagation();
+    if (b.dataset.act === "sentence") { showSentence(Tip.span, Tip.text); return; }
+    if (b.dataset.act === "close") { Tip.hide(); return; }
+    if (b.dataset.act === "speakSentence") { Speech.say(Tip.sentence); return; }
     if (b.dataset.act === "speak") Speech.say(Tip.span.textContent);
     if (b.dataset.act === "save") { toggleSave(Tip.span, Tip.text); Tip.show(Tip.span, Tip.text, true); }
     if (b.dataset.act === "savePhrase") {
@@ -575,7 +703,7 @@
         <div class="demo">
           <div class="demo-label">Dene</div>
           <div class="reader-text" id="demo-text">${renderBody(DEMO)}</div>
-          <p class="demo-hint">${hoverDevice ? "Kelimelerin üzerine gel. Tıklarsan kutu sabitlenir: dinle ya da deftere ekle." : "Bir kelimeye dokun: anlamı, telaffuzu ve deftere ekleme düğmesi çıkar."}</p>
+          <p class="demo-hint">${hoverDevice ? "Kelimelerin üzerine gel. Tıklarsan kutu sabitlenir: dinle ya da deftere ekle." : "Bir kelimeye dokun: anlamı, telaffuzu ve deftere ekleme düğmesi çıkar."} Cümlenin Türkçesi için kelimeye basılı tut.</p>
         </div>
       </section>
 
@@ -1375,7 +1503,8 @@
         </div>
         ${(savedOffset > 0.05 || pageIndex > 0) && !p.done ? `<div class="resume" id="resume"><span>${isArt ? `En son %${Math.round(p.f * 100)}'te kalmıştın.` : `${pageIndex + 1}. sayfadan devam ediyorsun.`}</span><button class="btn sm primary" id="resume-btn">Kaldığın yerden devam et</button></div>` : ""}
         ${isArt ? "" : pager("top") + '<p class="page-status" id="page-status" tabindex="-1" role="status" aria-live="polite"></p>'}
-        <div class="reader-text" id="text"></div>
+        <p class="reader-help" id="reader-help">Kelimeye dokun: anlamını gör. Basılı tut: cümlenin Türkçesini gör. İlk cümle çevirisi için internet gerekir.</p>
+        <div class="reader-text" id="text" lang="en" aria-describedby="reader-help"></div>
         ${isArt ? "" : pager("bottom")}
 
         <div class="end">
@@ -1613,7 +1742,7 @@
       <ol>
         <li><strong>Seviyeni ve türünü seç.</strong> Kütüphanede seviye, tür ve uzunluğa göre süz.</li>
         <li><strong>Kelimelerin üzerine gel.</strong> Türkçe anlamı, kökü (ör. <em>went ← go</em>) ve o metne özel anlamı görünür. Kesik çizgili kısımlar kalıp ifadelerdir.</li>
-        <li><strong>Tıkla ve kaydet.</strong> Tıklayınca kutu sabitlenir: sesli dinle, deftere ekle ya da Tureng'de aç. Telefonda dokunman yeterli.</li>
+        <li><strong>Tıkla ve kaydet.</strong> Tıklayınca kutu sabitlenir: sesli dinle, deftere ekle ya da Tureng'de aç. Telefonda dokunman yeterli. Bir kelimeye basılı tutarsan tüm cümlenin Türkçe çevirisi açılır; kutudaki “Cümleyi çevir” düğmesini de kullanabilirsin. Cümle MyMemory'ye gönderilerek otomatik çevrilir. İlk çeviri internet gerektirir; son çevrilen cümleler bu tarayıcıda saklanır.</li>
         <li><strong>Kartlarla tekrar et.</strong> Defterindeki kelimeler, geçtikleri cümleyle birlikte aralıklı tekrar kartlarına dönüşür. Bildiğin kart daha seyrek, bilmediğin daha sık gelir.</li>
       </ol>
       <h2>Hangi seviyedeyim?</h2>
