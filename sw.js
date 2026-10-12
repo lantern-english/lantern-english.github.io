@@ -1,6 +1,6 @@
 /* Lantern English service worker: fresh files whenever online, cached copy when offline.
    VERSION is stamped by tools/make-site.mjs; "dev" means an unstamped checkout. */
-const VERSION = "bd89ca536d";
+const VERSION = "3c826cce20";
 const CACHE = "lantern-" + VERSION;
 const SHELL = [
   "./", "index.html", "manifest.webmanifest",

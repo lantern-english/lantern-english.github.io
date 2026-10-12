@@ -888,7 +888,7 @@
         markSaved(captions);
       } else {
         captions.innerHTML = "";
-        document.getElementById("caption-time").textContent = "Bu sahnede konuşma yok";
+        document.getElementById("caption-time").textContent = (v.captionCoverage === "main-dialogue" ? "Bu bölümde dokunulabilir altyazı yok" : "Bu sahnede konuşma yok");
       }
       prev.disabled = selected === 0; next.disabled = selected === v.captions.length - 1;
     }
