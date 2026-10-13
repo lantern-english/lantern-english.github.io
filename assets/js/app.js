@@ -549,12 +549,7 @@
     toastTimer = setTimeout(() => (t.hidden = true), 2200);
   }
   const dueWords = () => Object.values(words).filter((w) => (w.due || 0) <= Date.now());
-  function updateBadge() {
-    const b = document.getElementById("due-badge");
-    const n = dueWords().length;
-    b.textContent = n; b.hidden = n === 0;
-    b.title = `${n} kelime tekrar bekliyor`;
-  }
+  function updateBadge() { /* Counts are intentionally absent from the interface. */ }
 
   // ---------- personal reading shelf ----------
   function bookmarkText(saved) {
@@ -576,10 +571,6 @@
   }
   const bookmarkStorageNote = () => bookmarkStorageAvailable ? "Kitaplığın bu tarayıcıda saklanır." : "Kayıtların şu an yalnızca bu oturumda tutulabiliyor.";
   function updateBookmarks() {
-    const badge = document.getElementById("library-badge");
-    badge.textContent = bookmarks.length; badge.hidden = bookmarks.length === 0;
-    badge.title = `${bookmarks.length} kayıt`;
-    document.querySelectorAll("[data-bookmark-count]").forEach((e) => { e.textContent = bookmarks.length; });
     const note = $main.querySelector(".library-note");
     if (note) note.textContent = bookmarkStorageNote();
     $main.querySelectorAll("[data-bookmark]").forEach((b) => {
@@ -663,7 +654,7 @@
     </a><div class="card-actions">${bookmarkButton(t)}</div></div>`;
   }
   const grid = (items) => items.length ? `<div class="grid">${items.map((t) => card(t)).join("")}</div>` : "";
-  const collectionNav = (kind) => `<nav class="collection-switch" aria-label="Okuma bölümleri">${Object.entries(COLLECTIONS).map(([key, c]) => `<a href="#${c.route}"${key === kind ? ' aria-current="page"' : ""}>${c.title} <span>${c.items.length}</span></a>`).join("")}<a href="#my-library"${kind === "saved" ? ' aria-current="page"' : ""}>Kitaplığım <span data-bookmark-count>${bookmarks.length}</span></a></nav>`;
+  const collectionNav = (kind) => `<nav class="collection-switch" aria-label="Okuma bölümleri">${Object.entries(COLLECTIONS).map(([key, c]) => `<a href="#${c.route}"${key === kind ? ' aria-current="page"' : ""}>${c.title}</a>`).join("")}<a href="#my-library"${kind === "saved" ? ' aria-current="page"' : ""}>Kitaplığım</a></nav>`;
 
   // ---------- views ----------
   const DEMO = {
@@ -682,8 +673,6 @@
     const featured = LEVELS.map((lv) => STORIES.find((s) => s.level === lv.id && !(progress[s.id] && progress[s.id].done)) || STORIES.find((s) => s.level === lv.id)).filter(Boolean);
     const advanced = STORIES.filter((s) => ["B2", "C1", "C2"].includes(s.level) && s.author === "Lantern Original")
       .sort((a, b) => LEVELS.findIndex((l) => l.id === b.level) - LEVELS.findIndex((l) => l.id === a.level)).slice(0, 5);
-    const levelCount = (id) => STORIES.filter((t) => t.level === id).length;
-    const genreCount = (g) => STORIES.filter((t) => t.genre === g).length;
     $main.innerHTML = `
       <section class="hero">
         <div>
@@ -693,12 +682,6 @@
           <div class="hero-actions">
             <a class="btn primary" href="#library">Hikâyelere göz at</a>
             <button class="btn" id="random">${ICON.dice} Bana bir hikâye seç</button>
-          </div>
-          <div class="stats">
-            <div class="stat"><b>${STORIES.length}</b><span>hikâye</span></div>
-            <div class="stat"><b>${ARTICLES.length}</b><span>makale</span></div>
-            <div class="stat"><b>${fmt(Object.keys(DICT).length)}</b><span>sözlük maddesi</span></div>
-            <div class="stat"><b>${Object.keys(words).length}</b><span>defterindeki kelime</span></div>
           </div>
         </div>
         <div class="demo">
@@ -710,9 +693,9 @@
 
       <section class="section" aria-label="Okuma bölümleri">
         <div class="collection-grid">
-          <a class="collection-link" href="#library"><span class="eyebrow">A1–C2 · ${STORIES.length} hikâye</span><h2>Hikâyeler</h2><p>Karakterler, olaylar ve farklı dünyalar. Seviyene ve sevdiğin türe göre bir hikâye seç.</p><span class="link">Hikâye kütüphanesine git →</span></a>
-          <a class="collection-link articles-link" href="#articles"><span class="eyebrow">B2–C2 · ${ARTICLES.length} makale</span><h2>Makaleler</h2><p>Edebiyat ve anlatı üzerine denemeler. Bir fikri daha yakından incelemek için oku.</p><span class="link">Makalelere git →</span></a>
-          ${VIDEOS.length ? `<a class="collection-link videos-link" href="#videos"><span class="eyebrow">İzleyerek öğren · ${VIDEOS.length} video</span><h2>Videolar</h2><p>Animasyon, bilim kurgu, macera ve astronotlar: İngilizce izle, altyazıdaki kelimelere dokun, Türkçe anlamlarını gör.</p><span class="link">Videolara göz at →</span></a>` : ""}
+          <a class="collection-link" href="#library"><span class="eyebrow">A1–C2 · Hikâyeler</span><h2>Hikâyeler</h2><p>Karakterler, olaylar ve farklı dünyalar. Seviyene ve sevdiğin türe göre bir hikâye seç.</p><span class="link">Hikâye kütüphanesine git →</span></a>
+          <a class="collection-link articles-link" href="#articles"><span class="eyebrow">B2–C2 · Makaleler</span><h2>Makaleler</h2><p>Edebiyat ve anlatı üzerine denemeler. Bir fikri daha yakından incelemek için oku.</p><span class="link">Makalelere git →</span></a>
+          ${VIDEOS.length ? `<a class="collection-link videos-link" href="#videos"><span class="eyebrow">İzleyerek öğren</span><h2>Videolar</h2><p>Bilim kurgu, fantastik dünyalar, korku ve komedi: altyazı ve kelime desteğiyle İngilizce izle.</p><span class="link">Videolara göz at →</span></a>` : ""}
         </div>
       </section>
 
@@ -722,7 +705,7 @@
         <div class="section-head"><h2>Hikâye seviyeni seç</h2><a class="link" href="#about">Hangi seviyedeyim?</a></div>
         <div class="ladder">
           ${LEVELS.map((lv, i) => `<a class="step lvl-${lv.id}" style="--h:${i}" href="#library" data-level="${lv.id}">
-            <b>${lv.id}</b><span class="name">${lv.name}</span><span class="count">${levelCount(lv.id)} hikâye · ${lv.desc}</span></a>`).join("")}
+            <b>${lv.id}</b><span class="name">${lv.name}</span><span class="count">${lv.desc}</span></a>`).join("")}
         </div>
       </section>
 
@@ -730,7 +713,7 @@
         <div class="section-head"><h2>Hikâye türleri</h2></div>
         <div class="genre-grid">
           ${Object.entries(GENRES).map(([g, v]) => `<a class="genre-tile g-${g}" href="#library" data-genre="${g}">
-            <span class="gname"><span class="dot"></span>${v.name}</span><span class="gdesc">${v.desc} · ${genreCount(g)} hikâye</span></a>`).join("")}
+            <span class="gname"><span class="dot"></span>${v.name}</span><span class="gdesc">${v.desc}</span></a>`).join("")}
         </div>
       </section>
 
@@ -915,6 +898,7 @@
     { id: "fun", label: "Eğlenceli", note: "Komik skeçler ve kısa animasyonlar" },
     { id: "adventure", label: "Macera ve fantastik", note: "Ejderhalar, sırlar ve masal dünyaları" },
     { id: "scifi", label: "Bilim kurgu", note: "Gelecek, robotlar ve tuhaf dünyalar" },
+    { id: "horror", label: "Korku ve gerilim", note: "Hayaletler, yaratıklar ve gizemler" },
     { id: "real", label: "Gerçek hayat ve uzay", note: "Günlük hayat, doğa ve uzay" },
   ];
   const videoCategory = (v) => VIDEO_CATEGORIES.find((c) => c.id === v.category) || VIDEO_CATEGORIES[0];
@@ -924,7 +908,7 @@
     return `<a class="video-card" href="#v.${esc(v.id)}">
         <div class="video-art" aria-hidden="true">${ICON.play}<span>İzle</span></div>
         <div class="video-card-body"><div class="card-top"><span class="lvl lvl-${esc(v.level)}">${esc(v.level)}</span><span>${videoTime(v.durationSeconds)}</span>${isDownloaded(v.id) ? `<span class="dl-badge">${ICON.download} İndirildi</span>` : ""}</div>
-          <h3>${esc(v.title)}</h3><p class="by">${esc(v.creator)} · ${v.year}</p><p>${esc(v.summaryTr)}</p><span class="link">İzlemeye başla →</span></div>
+          <h3>${esc(v.title)}</h3><p class="by">${esc(v.creator)} · ${v.year}</p><p>${esc(v.summaryTr)}</p><p class="by">${v.provider === "youtube" ? "YouTube oynatıcısı" : "Dokunulabilir İngilizce altyazı"}</p><span class="link">İzlemeye başla →</span></div>
       </a>`;
   }
 
@@ -932,12 +916,12 @@
     let current = "all";
     const shelves = VIDEO_CATEGORIES.map((c) => ({ ...c, list: VIDEOS.filter((v) => videoCategory(v).id === c.id)
       .sort((a, b) => levelRank(a.level) - levelRank(b.level) || a.durationSeconds - b.durationSeconds) })).filter((c) => c.list.length);
-    $main.innerHTML = `<div class="lib-head video-head"><div><p class="eyebrow">İzleyerek öğren · ${VIDEOS.length} video</p><h1>Videolar</h1>
-      <p class="lead">İngilizce kısa filmler ve videolar. Altyazıdaki kelimeye dokun; anlamını gör ve defterine kaydet.</p></div>
-      ${canDownload ? `<button class="dl-tab" type="button" data-video-cat="downloads" aria-pressed="false" aria-controls="shelf-downloads-box">${ICON.download} İndirilenler <span class="chip-n" id="dl-count"></span></button>` : ""}</div>
+    $main.innerHTML = `<div class="lib-head video-head"><div><p class="eyebrow">İzleyerek öğren</p><h1>Videolar</h1>
+      <p class="lead">İngilizce filmler, kısa yapımlar ve belgeseller. Dokunulabilir altyazılı videolarda kelimenin anlamını gör ve defterine kaydet. YouTube videolarında altyazıyı oynatıcıdan aç.</p></div>
+      ${canDownload ? `<button class="dl-tab" type="button" data-video-cat="downloads" aria-pressed="false" aria-controls="shelf-downloads-box">${ICON.download} İndirilenler</button>` : ""}</div>
       <div class="video-cats chips" role="group" aria-label="Video türü">
-        <button class="chip" type="button" data-video-cat="all" aria-pressed="true">Tümü <span class="chip-n">${VIDEOS.length}</span></button>
-        ${shelves.map((c) => `<button class="chip" type="button" data-video-cat="${c.id}" aria-pressed="false">${esc(c.label)} <span class="chip-n">${c.list.length}</span></button>`).join("")}
+        <button class="chip" type="button" data-video-cat="all" aria-pressed="true">Tümü</button>
+        ${shelves.map((c) => `<button class="chip" type="button" data-video-cat="${c.id}" aria-pressed="false">${esc(c.label)}</button>`).join("")}
       </div>
       <div id="video-shelves">${shelves.map((c) => `<section class="video-shelf" data-shelf="${c.id}" aria-labelledby="shelf-${c.id}">
         <div class="section-head"><h2 id="shelf-${c.id}">${esc(c.label)}</h2><span>${esc(c.note)}</span></div>
@@ -949,8 +933,7 @@
       const saved = VIDEOS.filter((v) => isDownloaded(v.id)).sort((a, b) => downloads[b.id].at - downloads[a.id].at);
       const busy = VIDEOS.filter((v) => activeDownloads[v.id]);
       const total = saved.reduce((n, v) => n + (downloads[v.id].bytes || 0), 0);
-      document.getElementById("dl-count").textContent = saved.length || "";
-      dlShelf.innerHTML = `<div class="section-head"><h2 id="shelf-downloads">İndirilenler</h2><span>${saved.length ? `${saved.length} video · ${fmtMB(total)} · internetsiz izlenebilir` : "Bu cihaza kaydettiğin videolar"}</span></div>
+      dlShelf.innerHTML = `<div class="section-head"><h2 id="shelf-downloads">İndirilenler</h2><span>${saved.length ? `${fmtMB(total)} · internetsiz izlenebilir` : "Bu cihaza kaydettiğin videolar"}</span></div>
         ${busy.map((v) => { const j = activeDownloads[v.id]; const pct = j.total ? Math.min(99, Math.floor(j.loaded / j.total * 100)) : 0;
           return `<p class="dl-line">${ICON.download} <b>${esc(v.title)}</b> indiriliyor · %${pct}</p>`; }).join("")}
         ${saved.length ? `<div class="video-grid">${saved.map((v) => `<div class="dl-item">${videoCard(v)}<button class="btn sm ghost dl-remove" type="button" data-dl-remove="${esc(v.id)}">${ICON.trash} Sil · ${fmtMB(downloads[v.id].bytes || 0)}</button></div>`).join("")}</div>`
@@ -980,12 +963,50 @@
     }
   }
 
+  function viewYouTubeVideo(v) {
+    const watchUrl = v.source.watchUrl || v.source.url;
+    $main.innerHTML = `<article class="video-view" data-id="${esc(v.id)}">
+      <nav class="crumbs" aria-label="İçerik yolu"><a href="#videos">Videolar</a><span>›</span><span>${esc(v.title)}</span></nav>
+      <header class="reader-head"><div class="card-top"><span class="lvl lvl-${esc(v.level)}">${esc(v.level)}</span><span>${esc(videoCategory(v).label)} · ${videoTime(v.durationSeconds)}</span></div>
+        <h1>${esc(v.title)}</h1><p class="by">${esc(v.creator)} · ${v.year}</p><p class="lead">${esc(v.summaryTr)}</p>
+        <p class="video-level-note">${esc(v.levelNoteTr)}</p>${v.advisoryTr ? `<p class="video-advisory">${esc(v.advisoryTr)}</p>` : ""}</header>
+      <div class="video-stage"><div class="video-frame" id="youtube-frame"><div class="video-placeholder"><span aria-hidden="true">${ICON.play}</span><p>İngilizce video · ${videoTime(v.durationSeconds)}</p>
+        <button class="btn primary" id="youtube-start" type="button">Videoyu başlat</button><p class="video-load-note">Video için internet bağlantısı gerekir.</p></div></div></div>
+      <p class="video-status" role="status">Bu video YouTube oynatıcısıyla açılır. İngilizce altyazı varsa CC düğmesinden aç; Ayarlar → Altyazılar bölümünden İngilizceyi seç. Bu oynatıcıdaki altyazıya dokunarak kelime anlamı açılmaz.</p>
+      <p><a class="btn sm" href="${esc(watchUrl)}" target="_blank" rel="noopener">YouTube’da izle ↗</a></p>
+      <section class="panel" aria-labelledby="video-vocabulary"><h2 id="video-vocabulary">İzlemeden önce kelimeler</h2><p class="sub">Bir kelimeye dokun; Türkçe anlamını gör ve kelime defterine kaydet.</p>
+        <div class="reader-text" id="youtube-vocabulary" lang="en">${Object.keys(v.glossary || {}).map((word) => `<p>${renderInline(word, [])}</p>`).join("")}</div></section>
+      <p class="video-credit">Video: <a href="${esc(watchUrl)}" target="_blank" rel="noopener">${esc(v.source.name)}</a>. ${esc(v.source.credit)}. Video yayıncının oynatıcısında özgün hâliyle gösterilir. Türkçe özet ve öğrenme açıklamaları Lantern English tarafından hazırlanmıştır.</p>
+    </article>`;
+    const frame = document.getElementById("youtube-frame");
+    document.getElementById("youtube-start").addEventListener("click", () => {
+      if (!/^[A-Za-z0-9_-]{11}$/.test(v.youtubeId)) return;
+      const iframe = document.createElement("iframe");
+      iframe.src = `https://www.youtube-nocookie.com/embed/${v.youtubeId}?autoplay=1&playsinline=1&cc_load_policy=1&cc_lang_pref=en&hl=tr&rel=0`;
+      iframe.title = `${v.title} · YouTube video oynatıcısı`;
+      iframe.allow = "accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen";
+      iframe.allowFullscreen = true;
+      iframe.referrerPolicy = "strict-origin-when-cross-origin";
+      iframe.style.cssText = "position:absolute;inset:0;width:100%;height:100%;border:0";
+      frame.style.aspectRatio = "16 / 9";
+      frame.replaceChildren(iframe);
+    });
+    const vocabulary = document.getElementById("youtube-vocabulary");
+    vocabulary.querySelectorAll(".w").forEach((word) => { word.tabIndex = 0; word.setAttribute("role", "button"); word.setAttribute("aria-label", word.textContent + " · Türkçe anlamını gör"); });
+    bindText(vocabulary, v);
+    vocabulary.addEventListener("keydown", (ev) => { if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches(".w")) { ev.preventDefault(); ev.target.click(); } });
+    markSaved(vocabulary);
+    videoCleanup = () => { frame.replaceChildren(); };
+  }
+
   function viewVideo(id) {
     const v = VIDEO_BY_ID[id];
     if (!v) {
       $main.innerHTML = '<div class="empty"><h3>Video bulunamadı</h3><a class="btn" href="#videos">Videolara dön</a></div>';
       return;
     }
+    if (v.provider === "youtube") { viewYouTubeVideo(v); return; }
+    const canDownloadVideo = canDownload && v.downloadable !== false;
     $main.innerHTML = `<article class="video-view" id="video-view" data-id="${esc(v.id)}">
       <nav class="crumbs" aria-label="İçerik yolu"><a href="#videos">Videolar</a><span>›</span><span>${esc(v.title)}</span></nav>
       <header class="reader-head"><div class="card-top"><span class="lvl lvl-${esc(v.level)}">${esc(v.level)}</span><span>${esc(videoCategory(v).label)} · Altyazı destekli · ${videoTime(v.durationSeconds)}</span></div>
@@ -1029,7 +1050,7 @@
           <button type="button" class="cs-reset" id="cs-reset">Varsayılana dön</button>
         </div></div></div>
       <p class="video-status" id="video-status" role="status" aria-live="polite">Altyazı videonun üzerinde görünür; bir kelimeye dokununca anlamı açılır.</p>
-      ${canDownload ? '<div class="video-dl" id="video-dl" aria-live="polite"></div>' : ""}
+      ${canDownloadVideo ? '<div class="video-dl" id="video-dl" aria-live="polite"></div>' : ""}
       <section class="panel caption-panel" aria-labelledby="caption-heading"><div class="section-head"><h2 id="caption-heading">İngilizce altyazı</h2><span id="caption-time"></span></div>
         <p class="sub" id="caption-help">Altyazı videonun üzerinde görünür. Bir kelimeye dokunduğunda video durur ve Türkçe anlamı açılır; oynat düğmesiyle devam edebilirsin. Görüntü kalitesi ve altyazı görünümü için Ayarlar düğmesini kullan.</p>
         <div class="caption-controls"><button class="btn sm" id="caption-prev" type="button" aria-label="Önceki altyazı">← Önceki</button>
@@ -1597,7 +1618,7 @@
       <div class="bookshelf-types chips" role="group" aria-label="Kaydedilen metin türü">
         ${[["all", "Tümü"], ["story", "Hikâyeler"], ["article", "Makaleler"]].map(([type, label]) => `<button class="chip" type="button" data-library-type="${type}" aria-pressed="${shelfFilt.type === type}">${label}</button>`).join("")}
       </div>
-      <div class="result-line"><span id="count" aria-live="polite"></span><button class="btn sm ghost" id="clear">Filtreleri temizle</button>
+      <div class="result-line"><button class="btn sm ghost" id="clear">Filtreleri temizle</button>
         <label>Sırala <select id="sort"><option value="saved">Son kaydedilen</option><option value="recent">Son okunan</option><option value="level">Seviye</option><option value="title">Başlık</option></select></label>
       </div>
       <div id="results"></div>`;
@@ -1610,7 +1631,6 @@
       if (shelfFilt.sort === "title") list.sort((a, b) => a.title.localeCompare(b.title));
       else if (shelfFilt.sort === "recent") list.sort((a, b) => (progress[b.id]?.at || 0) - (progress[a.id]?.at || 0));
       else if (shelfFilt.sort === "level") list.sort((a, b) => LEVELS.findIndex((l) => l.id === a.level) - LEVELS.findIndex((l) => l.id === b.level) || a.words - b.words);
-      document.getElementById("count").textContent = `${list.length === bookmarks.length ? `${bookmarks.length} kayıt` : `${list.length} / ${bookmarks.length} kayıt gösteriliyor`} · ${list.filter((t) => t.type === "story").length} hikâye · ${list.filter((t) => t.type === "article").length} makale`;
       $main.querySelectorAll("[data-library-type]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.libraryType === shelfFilt.type));
       document.getElementById("results").innerHTML = grid(list) || (bookmarks.length
         ? '<div class="empty"><h3>Bu filtrelerle kayıt yok</h3><p>Bir filtreyi kaldırmayı veya aramayı temizlemeyi dene.</p></div>'
@@ -1650,7 +1670,7 @@
         <div class="filter-row"><span>Tür</span><div class="chips">${Object.entries(GENRES).map(([g, v]) => chip("genre", g, `<span class="dot"></span>${v.name}`, " g-" + g)).join("")}</div></div>
         <div class="filter-row"><span>Uzunluk</span><div class="chips">${chip("length", "short", "Kısa · 1.200 kelimeden az")}${chip("length", "medium", "Orta · 1.200–3.500 kelime")}${chip("length", "long", "Uzun · 3.500 kelimeden fazla")}</div></div>
       </div>
-      <div class="result-line"><span id="count" aria-live="polite"></span><button class="btn sm ghost" id="clear">Filtreleri temizle</button>
+      <div class="result-line"><button class="btn sm ghost" id="clear">Filtreleri temizle</button>
         <label>Sırala <select id="sort"><option value="level">Seviye</option><option value="short">En kısa</option><option value="long">En uzun</option><option value="title">Başlık</option></select></label>
       </div>
       <div id="results"></div>`;
@@ -1668,7 +1688,6 @@
         filters.sort === "long" ? (a, b) => b.words - a.words :
         filters.sort === "title" ? (a, b) => a.title.localeCompare(b.title) :
         (a, b) => lv(a) - lv(b) || a.words - b.words);
-      document.getElementById("count").textContent = `${list.length} ${label}`;
       // "Önerilenler": editorial picks of each selected level go first (stories only)
       let recs = [];
       if (kind === "story") {
@@ -1892,12 +1911,12 @@
     const all = Object.values(words).sort((a, b) => b.added - a.added);
     const due = dueWords();
     $main.innerHTML = `
-      <div class="lib-head"><div><p class="eyebrow">Kelime Defterim</p><h1>${all.length ? `${all.length} kelime biriktirdin` : "Defterin boş"}</h1>
+      <div class="lib-head"><div><p class="eyebrow">Kelime Defterim</p><h1>${all.length ? "Kelimelerin" : "Defterin boş"}</h1>
         <p class="lead">Okurken bir kelimeye tıklayıp “Deftere ekle” dediğinde buraya gelir, geçtiği cümleyle birlikte. Kartlar bölümünde aralıklı tekrar yöntemiyle çalışırsın.</p></div>
         ${all.length ? `<button class="btn sm" id="copy">Anki için kopyala</button>` : ""}</div>
       <div class="tabs" role="tablist">
         <button role="tab" data-tab="list" aria-selected="${tab === "list"}">Liste</button>
-        <button role="tab" data-tab="cards" aria-selected="${tab === "cards"}">Kartlar ${due.length ? `<span class="badge">${due.length}</span>` : ""}</button>
+        <button role="tab" data-tab="cards" aria-selected="${tab === "cards"}">Kartlar</button>
       </div>
       <div id="tab-body"></div>`;
     $main.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => viewWords(b.dataset.tab)));
@@ -1945,7 +1964,7 @@
       const w = queue[0];
       const ctxHtml = w.ctx ? esc(w.ctx).replace(new RegExp("\\b(" + esc(w.form || w.w).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")\\b", "i"), "<b>$1</b>") : "";
       body.innerHTML = `<div class="flash-wrap">
-        <div class="flash-meta"><span>${extra ? "Serbest çalışma" : "Tekrar"}</span><span>${queue.length} kart kaldı</span></div>
+        <div class="flash-meta"><span>${extra ? "Serbest çalışma" : "Tekrar"}</span></div>
         <div class="flash" id="flash" tabindex="0" role="button" aria-label="Kartı çevir">
           <div class="fw">${esc(w.w)}</div>${ctxHtml ? `<div class="fctx">“${ctxHtml}”</div>` : ""}
           <div id="back" hidden><div class="fpos">${esc(w.pos || "")}</div><div class="ftr">${esc(w.tr || "—")}</div></div>
