@@ -115,10 +115,11 @@
   }
   const lemmaOf = (raw) => { const r = lookupWord(raw); return r ? r.lemma : L.normalize(raw); };
 
+  const automaticVideoMeanings = new WeakMap();
   function glossFor(raw, text) {
-    if (!text || !text.glossary) return null;
-    for (const c of L.candidates(raw)) if (text.glossary[c]) return text.glossary[c];
-    return null;
+    if (!text) return null;
+    for (const c of L.candidates(raw)) if (text.glossary && text.glossary[c]) return text.glossary[c];
+    return automaticVideoMeanings.get(text)?.[L.normalize(raw)] || null;
   }
 
   // ---------- text rendering (every word becomes a hoverable span) ----------
@@ -206,7 +207,7 @@
   const Tip = {
     el: document.getElementById("tip"),
     span: null, text: null, pinned: false, timer: 0, request: 0, sentence: "",
-    show(span, text, pin) {
+    show(span, text, pin, skipWordLookup) {
       clearTimeout(this.timer);
       this.request++; this.sentence = "";
       this.el.classList.remove("sentence-tip");
@@ -217,6 +218,9 @@
       this.el.hidden = false;
       span.classList.add("on");
       this.place();
+      if (!skipWordLookup && pin && text && text.type === "video" && !lookupWord(span.textContent) && !glossFor(span.textContent, text)) {
+        showMissingVideoWord(span, text);
+      }
     },
     hide() {
       clearTimeout(this.timer);
@@ -269,6 +273,7 @@
           : `<div class="tip-none">Bu kelime sözlüğümüzde henüz yok.</div>`;
       }
       if (ctx) h += `<div class="tip-ctx"><b>Bu metinde:</b> ${esc(ctx)}</div>`;
+      if (text && automaticVideoMeanings.get(text)?.[norm]) h += '<div class="tip-hint">Otomatik çeviri · MyMemory. Bağlama göre farklı anlamı olabilir.</div>';
       if (phrase) h += `<div class="tip-ctx"><b>İfade · ${esc(phrase.en)}</b><br>${esc(phrase.tr)}</div>`;
       if (pin) {
         h += `<div class="tip-actions">`;
@@ -337,7 +342,11 @@
     return chunks;
   }
   async function translateSentence(sentence) {
-    if (sentenceCache.has(sentence)) return sentenceCache.get(sentence);
+    if (sentenceCache.has(sentence)) {
+      const cached = sentenceCache.get(sentence);
+      if ((sentence.match(L.WORD_RE) || []).length !== 1 || L.normalize(cached) !== L.normalize(sentence)) return cached;
+      sentenceCache.delete(sentence);
+    }
     if (sentencePending.has(sentence)) return sentencePending.get(sentence);
     const job = (async () => {
       const translated = [];
@@ -349,16 +358,27 @@
           if (!response.ok) throw new Error("translation unavailable");
           const data = await response.json();
           if (+data.responseStatus !== 200 || data.quotaFinished || typeof data.responseData?.translatedText !== "string" || !data.responseData.translatedText.trim()) throw new Error("translation unavailable");
+          let translatedText = data.responseData.translatedText;
+          // A translation-memory proper-name match may win over the actual common-word meaning.
+          // Only accept an alternative for the exact same source word, with a high match score.
+          const key = L.normalize(chunk);
+          if ((chunk.match(L.WORD_RE) || []).length === 1 && L.normalize(translatedText) === key && Array.isArray(data.matches)) {
+            const alternative = data.matches.filter((m) => typeof m.segment === "string" && typeof m.translation === "string" && +m.match >= .9 && L.normalize(m.segment.trim()) === key && m.translation.trim() && L.normalize(m.translation.trim()) !== key)
+              .sort((a, b) => +b.match - +a.match)[0];
+            if (alternative) translatedText = alternative.translation;
+          }
           // Some responses contain HTML entities. Decode as text, never render API HTML.
           const decoder = document.createElement("textarea");
-          decoder.innerHTML = esc(data.responseData.translatedText).replace(/&amp;/g, "&");
+          decoder.innerHTML = esc(translatedText).replace(/&amp;/g, "&");
           translated.push(decoder.value.trim());
         } finally { clearTimeout(timeout); }
       }
       const result = translated.join(" ");
-      sentenceCache.set(sentence, result);
-      if (sentenceCache.size > 200) sentenceCache.delete(sentenceCache.keys().next().value);
-      S.save("sentenceTranslations", [...sentenceCache]);
+      if ((sentence.match(L.WORD_RE) || []).length !== 1 || L.normalize(result) !== L.normalize(sentence)) {
+        sentenceCache.set(sentence, result);
+        if (sentenceCache.size > 200) sentenceCache.delete(sentenceCache.keys().next().value);
+        S.save("sentenceTranslations", [...sentenceCache]);
+      }
       return result;
     })();
     sentencePending.set(sentence, job);
@@ -368,7 +388,7 @@
   async function showSentence(span, text) {
     const sentence = fullSentenceAround(span);
     if (!sentence) return;
-    Tip.show(span, text, true);
+    Tip.show(span, text, true, true);
     const request = Tip.request;
     Tip.sentence = sentence;
     Tip.el.classList.add("sentence-tip");
@@ -391,6 +411,42 @@
       Tip.el.querySelector(".tip-tr").setAttribute("aria-busy", "false");
       Tip.place();
     }
+  }
+
+  // Keep rare caption words useful without publishing guessed dictionary entries.
+  async function showMissingVideoWord(span, text) {
+    const request = Tip.request;
+    const raw = span.textContent;
+    const status = Tip.el.querySelector(".tip-none");
+    if (!status) return;
+    status.textContent = "Türkçe anlam aranıyor…";
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-busy", "true");
+    const hint = document.createElement("div");
+    hint.className = "tip-hint";
+    hint.textContent = "Otomatik çeviri · MyMemory. Kelime çeviri hizmetine gönderilir; ilk arama internet gerektirir.";
+    Tip.el.appendChild(hint);
+    Tip.place();
+    try {
+      const tr = await translateSentence(L.normalize(raw));
+      if (Tip.request !== request || !span.isConnected || Tip.sentence) return;
+      if (L.normalize(tr) === L.normalize(raw)) {
+        status.textContent = "Türkçe karşılık bulunamadı. Özel ad veya altyazıdaki bir yazım hatası olabilir; cümleyi çevirerek kontrol edebilirsin.";
+      } else {
+        // Per-video context, so an automatic result cannot replace the main dictionary.
+        const meanings = automaticVideoMeanings.get(text) || {};
+        meanings[L.normalize(raw)] = tr;
+        automaticVideoMeanings.set(text, meanings);
+        Tip.el.innerHTML = Tip.content(span, text, true);
+      }
+    } catch (error) {
+      if (Tip.request !== request || !span.isConnected || Tip.sentence) return;
+      status.textContent = navigator.onLine === false ? "Bu kelimenin ilk çevirisi için internete bağlan." : "Anlam şu an alınamadı. Tekrar dene veya Tureng’de aç.";
+      const retry = document.createElement("button");
+      retry.className = "btn sm"; retry.dataset.act = "retryWord"; retry.textContent = "Tekrar dene";
+      Tip.el.querySelector(".tip-actions").prepend(retry);
+    }
+    if (Tip.request === request) { status.setAttribute("aria-busy", "false"); Tip.place(); }
   }
 
   function toggleSave(span, text) {
@@ -469,6 +525,7 @@
     ev.stopPropagation();
     if (b.dataset.act === "sentence") { showSentence(Tip.span, Tip.text); return; }
     if (b.dataset.act === "close") { Tip.hide(); return; }
+    if (b.dataset.act === "retryWord") { Tip.show(Tip.span, Tip.text, true); return; }
     if (b.dataset.act === "speakSentence") { Speech.say(Tip.sentence); return; }
     if (b.dataset.act === "speak") Speech.say(Tip.span.textContent);
     if (b.dataset.act === "save") { toggleSave(Tip.span, Tip.text); Tip.show(Tip.span, Tip.text, true); }
@@ -908,7 +965,7 @@
     return `<a class="video-card" href="#v.${esc(v.id)}">
         <div class="video-art" aria-hidden="true">${ICON.play}<span>İzle</span></div>
         <div class="video-card-body"><div class="card-top"><span class="lvl lvl-${esc(v.level)}">${esc(v.level)}</span><span>${videoTime(v.durationSeconds)}</span>${isDownloaded(v.id) ? `<span class="dl-badge">${ICON.download} İndirildi</span>` : ""}</div>
-          <h3>${esc(v.title)}</h3><p class="by">${esc(v.creator)} · ${v.year}</p><p>${esc(v.summaryTr)}</p><p class="by">${v.provider === "youtube" ? "YouTube oynatıcısı" : "Dokunulabilir İngilizce altyazı"}</p><span class="link">İzlemeye başla →</span></div>
+          <h3>${esc(v.title)}</h3><p class="by">${esc(v.creator)} · ${v.year}</p><p>${esc(v.summaryTr)}</p><p class="by">${v.captions.length ? "Dokunulabilir İngilizce altyazı" : "YouTube oynatıcısı"}${v.captionKind === "automatic" ? " · Otomatik" : ""}</p><span class="link">İzlemeye başla →</span></div>
       </a>`;
   }
 
@@ -917,7 +974,7 @@
     const shelves = VIDEO_CATEGORIES.map((c) => ({ ...c, list: VIDEOS.filter((v) => videoCategory(v).id === c.id)
       .sort((a, b) => levelRank(a.level) - levelRank(b.level) || a.durationSeconds - b.durationSeconds) })).filter((c) => c.list.length);
     $main.innerHTML = `<div class="lib-head video-head"><div><p class="eyebrow">İzleyerek öğren</p><h1>Videolar</h1>
-      <p class="lead">İngilizce filmler, kısa yapımlar ve belgeseller. Dokunulabilir altyazılı videolarda kelimenin anlamını gör ve defterine kaydet. YouTube videolarında altyazıyı oynatıcıdan aç.</p></div>
+      <p class="lead">İngilizce filmler, kısa yapımlar ve belgeseller. İngilizce altyazıdaki kelimelere dokun; Türkçe anlamını gör ve defterine kaydet. YouTube videolarının dokunulabilir altyazısı oynatıcının hemen altında görünür.</p></div>
       ${canDownload ? `<button class="dl-tab" type="button" data-video-cat="downloads" aria-pressed="false" aria-controls="shelf-downloads-box">${ICON.download} İndirilenler</button>` : ""}</div>
       <div class="video-cats chips" role="group" aria-label="Video türü">
         <button class="chip" type="button" data-video-cat="all" aria-pressed="true">Tümü</button>
@@ -963,40 +1020,177 @@
     }
   }
 
+  let youtubeAPI = null;
+  function loadYouTubeAPI() {
+    if (window.YT && window.YT.Player) return Promise.resolve(window.YT);
+    if (youtubeAPI) return youtubeAPI;
+    youtubeAPI = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      const previous = window.onYouTubeIframeAPIReady;
+      let settled = false;
+      const finish = (error) => {
+        if (settled) return;
+        settled = true; clearTimeout(timer);
+        window.onYouTubeIframeAPIReady = previous;
+        if (error) { script.remove(); youtubeAPI = null; reject(error); }
+        else resolve(window.YT);
+      };
+      const timer = setTimeout(() => finish(new Error("YouTube timeout")), 20000);
+      window.onYouTubeIframeAPIReady = () => { finish(); if (typeof previous === "function") previous(); };
+      script.src = "https://www.youtube.com/iframe_api";
+      script.onerror = () => finish(new Error("YouTube unavailable"));
+      document.head.appendChild(script);
+    });
+    return youtubeAPI;
+  }
+
   function viewYouTubeVideo(v) {
     const watchUrl = v.source.watchUrl || v.source.url;
     $main.innerHTML = `<article class="video-view" data-id="${esc(v.id)}">
       <nav class="crumbs" aria-label="İçerik yolu"><a href="#videos">Videolar</a><span>›</span><span>${esc(v.title)}</span></nav>
       <header class="reader-head"><div class="card-top"><span class="lvl lvl-${esc(v.level)}">${esc(v.level)}</span><span>${esc(videoCategory(v).label)} · ${videoTime(v.durationSeconds)}</span></div>
         <h1>${esc(v.title)}</h1><p class="by">${esc(v.creator)} · ${v.year}</p><p class="lead">${esc(v.summaryTr)}</p>
-        <p class="video-level-note">${esc(v.levelNoteTr)}</p>${v.advisoryTr ? `<p class="video-advisory">${esc(v.advisoryTr)}</p>` : ""}</header>
-      <div class="video-stage"><div class="video-frame" id="youtube-frame"><div class="video-placeholder"><span aria-hidden="true">${ICON.play}</span><p>İngilizce video · ${videoTime(v.durationSeconds)}</p>
-        <button class="btn primary" id="youtube-start" type="button">Videoyu başlat</button><p class="video-load-note">Video için internet bağlantısı gerekir.</p></div></div></div>
-      <p class="video-status" role="status">Bu video YouTube oynatıcısıyla açılır. İngilizce altyazı varsa CC düğmesinden aç; Ayarlar → Altyazılar bölümünden İngilizceyi seç. Bu oynatıcıdaki altyazıya dokunarak kelime anlamı açılmaz.</p>
+        <p class="video-level-note">${esc(v.levelNoteTr)}</p>${v.advisoryTr ? `<p class="video-advisory">${esc(v.advisoryTr)}</p>` : ""}${v.captionKind === "automatic" ? '<p class="video-advisory">Otomatik İngilizce altyazı; sözcük ve zaman hataları olabilir.</p>' : ""}</header>
+      <div class="video-stage youtube-stage" id="youtube-stage">
+        <div class="youtube-frame" id="youtube-frame"><div class="video-placeholder"><span aria-hidden="true">${ICON.play}</span><p>İngilizce video · ${videoTime(v.durationSeconds)}</p><p class="video-load-note">Video için internet bağlantısı gerekir.</p></div></div>
+        <div class="reader-text youtube-captions" id="youtube-captions" lang="en" aria-describedby="youtube-help"></div>
+        <div class="youtube-controls"><button class="btn primary" id="youtube-start" type="button">Videoyu başlat</button>
+          <button class="btn sm" id="youtube-fullscreen" type="button">Tam ekran</button>
+          <button class="btn sm" id="youtube-prev" type="button" aria-label="Önceki altyazı">←</button>
+          <select id="youtube-select" aria-label="Altyazı seç">${v.captions.map((c, i) => `<option value="${i}">${videoTime(c.start)}</option>`).join("")}</select>
+          <button class="btn sm" id="youtube-next" type="button" aria-label="Sonraki altyazı">→</button></div>
+        <p class="video-status" id="youtube-help" role="status">${v.captions.length ? "Videonun altındaki İngilizce kelimelere dokun; video durur ve Türkçe anlam açılır." : "Bu video için dokunulabilir altyazı henüz yok. Yayıncının altyazısını CC düğmesinden açabilirsin."}</p>
+      </div>
       <p><a class="btn sm" href="${esc(watchUrl)}" target="_blank" rel="noopener">YouTube’da izle ↗</a></p>
+      ${v.subtitleSource ? `<p class="video-credit">Altyazı: <a href="${esc(v.subtitleSource.url)}" target="_blank" rel="noopener">${esc(v.subtitleSource.name)}</a>. ${esc(v.subtitleSource.changeNoteTr || "")}</p>` : ""}
       <section class="panel" aria-labelledby="video-vocabulary"><h2 id="video-vocabulary">İzlemeden önce kelimeler</h2><p class="sub">Bir kelimeye dokun; Türkçe anlamını gör ve kelime defterine kaydet.</p>
         <div class="reader-text" id="youtube-vocabulary" lang="en">${Object.keys(v.glossary || {}).map((word) => `<p>${renderInline(word, [])}</p>`).join("")}</div></section>
       <p class="video-credit">Video: <a href="${esc(watchUrl)}" target="_blank" rel="noopener">${esc(v.source.name)}</a>. ${esc(v.source.credit)}. Video yayıncının oynatıcısında özgün hâliyle gösterilir. Türkçe özet ve öğrenme açıklamaları Lantern English tarafından hazırlanmıştır.</p>
     </article>`;
-    const frame = document.getElementById("youtube-frame");
-    document.getElementById("youtube-start").addEventListener("click", () => {
-      if (!/^[A-Za-z0-9_-]{11}$/.test(v.youtubeId)) return;
-      const iframe = document.createElement("iframe");
-      iframe.src = `https://www.youtube-nocookie.com/embed/${v.youtubeId}?autoplay=1&playsinline=1&cc_load_policy=1&cc_lang_pref=en&hl=tr&rel=0`;
-      iframe.title = `${v.title} · YouTube video oynatıcısı`;
-      iframe.allow = "accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen";
-      iframe.allowFullscreen = true;
-      iframe.referrerPolicy = "strict-origin-when-cross-origin";
-      iframe.style.cssText = "position:absolute;inset:0;width:100%;height:100%;border:0";
-      frame.style.aspectRatio = "16 / 9";
-      frame.replaceChildren(iframe);
+    const frame = document.getElementById("youtube-frame"), stage = document.getElementById("youtube-stage");
+    const captions = document.getElementById("youtube-captions"), select = document.getElementById("youtube-select");
+    const prev = document.getElementById("youtube-prev"), next = document.getElementById("youtube-next");
+    const start = document.getElementById("youtube-start"), status = document.getElementById("youtube-help");
+    const fullscreen = document.getElementById("youtube-fullscreen");
+    let player = null, ready = false, disposed = false, interval = 0, selected = 0, displayed = null, pendingSeek = null, frozen = false;
+    let loadingTimer = 0, attempt = 0;
+    const defaultStatus = status.textContent;
+    function showCaption(index) {
+      if (disposed || displayed === index) return;
+      Tip.hide(); displayed = index; captions.dataset.cue = String(index);
+      const cue = v.captions[index];
+      captions.innerHTML = cue ? `<p>${renderInline(cue.text, [])}</p>` : '<p class="muted">Bu anda altyazı yok.</p>';
+      if (cue) { selected = index; select.value = String(index); }
+      captions.querySelectorAll(".w").forEach((word) => { word.tabIndex = 0; word.setAttribute("role", "button"); word.setAttribute("aria-label", word.textContent + " · Türkçe anlamını gör"); });
+      markSaved(captions);
+      prev.disabled = selected <= 0; next.disabled = selected >= v.captions.length - 1;
+    }
+    function sync() {
+      if (!ready || disposed || frozen) return;
+      const now = player.getCurrentTime();
+      showCaption(v.captions.findIndex((c) => c.start <= now && now < c.end));
+    }
+    function pauseForWord(ev) {
+      if (!ev.target.closest(".w")) return;
+      frozen = true;
+      if (ready) player.pauseVideo();
+      if (ready) start.textContent = "Devam et";
+    }
+    captions.addEventListener("pointerdown", (ev) => { if (ev.isPrimary && ev.button === 0) pauseForWord(ev); });
+    captions.addEventListener("click", pauseForWord);
+    bindText(captions, v);
+    captions.addEventListener("keydown", (ev) => { if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches(".w")) { ev.preventDefault(); ev.target.click(); } });
+    function seek(index) {
+      if (!v.captions[index]) return;
+      frozen = true; pendingSeek = v.captions[index].start;
+      if (ready) { player.pauseVideo(); player.seekTo(pendingSeek, true); pendingSeek = null; }
+      showCaption(index); start.textContent = ready ? "Devam et" : "Bu konuşmadan başlat";
+    }
+    select.addEventListener("change", () => seek(Number(select.value)));
+    prev.addEventListener("click", () => seek(selected - 1));
+    next.addEventListener("click", () => seek(selected + 1));
+    start.addEventListener("click", async () => {
+      if (ready) {
+        if (player.getPlayerState() === 1 && !frozen) player.pauseVideo();
+        else { frozen = false; Tip.hide(); player.playVideo(); }
+        return;
+      }
+      start.disabled = true; status.textContent = "Video yükleniyor…";
+      const thisAttempt = ++attempt;
+      const current = () => !disposed && attempt === thisAttempt;
+      function failed(message) {
+        if (!current()) return;
+        attempt++; clearTimeout(loadingTimer); clearInterval(interval); ready = false;
+        if (player) { player.destroy(); player = null; }
+        start.disabled = false; start.textContent = "Tekrar dene"; status.textContent = message;
+      }
+      try {
+        const YT = await loadYouTubeAPI();
+        if (!current()) return;
+        if (player) player.destroy();
+        frame.innerHTML = '<div id="youtube-player"></div>';
+        loadingTimer = setTimeout(() => failed("Video yüklenemedi. İnternetini kontrol edip tekrar dene veya YouTube’da izle."), 20000);
+        player = new YT.Player("youtube-player", {
+          host: "https://www.youtube-nocookie.com", videoId: v.youtubeId, width: "100%", height: "100%",
+          playerVars: { playsinline: 1, cc_load_policy: v.captions.length ? 0 : 1, cc_lang_pref: "en", hl: "tr", rel: 0, fs: 0, origin: location.origin },
+          events: {
+            onReady: (event) => {
+              if (!current()) { event.target.destroy(); return; }
+              clearTimeout(loadingTimer);
+              ready = true; start.disabled = false; status.textContent = defaultStatus;
+              if (pendingSeek !== null) { event.target.seekTo(pendingSeek, true); pendingSeek = null; }
+              frozen = false; event.target.playVideo();
+              interval = setInterval(sync, 100);
+            },
+            onStateChange: (event) => {
+              if (!current()) return;
+              if (event.data === 1) { frozen = false; Tip.hide(); status.textContent = defaultStatus; }
+              start.textContent = event.data === 1 ? "Duraklat" : "Devam et";
+              sync();
+            },
+            onError: () => failed("Video burada açılamadı. Tekrar dene veya aşağıdaki YouTube’da izle bağlantısını kullan."),
+            onAutoplayBlocked: () => { if (current()) { start.disabled = false; start.textContent = "Oynat"; status.textContent = "Tarayıcı oynatmayı bekletiyor. Videonun üzerindeki ▶ düğmesine dokunarak başlat."; } }
+          }
+        });
+      } catch (error) {
+        failed("Oynatıcı yüklenemedi. İnternetini kontrol edip tekrar dene.");
+      }
     });
+    const tipParent = Tip.el.parentNode;
+    const oldOverflow = document.body.style.overflow;
+    function fullscreenChanged() {
+      const active = document.fullscreenElement === stage || stage.classList.contains("youtube-expanded");
+      fullscreen.textContent = active ? "Tam ekrandan çık" : "Tam ekran";
+      document.body.style.overflow = active ? "hidden" : oldOverflow;
+      (active ? stage : tipParent).appendChild(Tip.el); Tip.place();
+    }
+    function exitExpanded() { stage.classList.remove("youtube-expanded"); fullscreenChanged(); }
+    fullscreen.addEventListener("click", async () => {
+      if (document.fullscreenElement === stage) { await document.exitFullscreen(); return; }
+      if (stage.classList.contains("youtube-expanded")) { exitExpanded(); return; }
+      // In-page fallback also keeps the subtitle panel on iPhone.
+      stage.classList.add("youtube-expanded"); fullscreenChanged();
+      if (stage.requestFullscreen) { try { await stage.requestFullscreen(); stage.classList.remove("youtube-expanded"); fullscreenChanged(); } catch (error) { /* Keep the in-page view. */ } }
+    });
+    const escapeFullscreen = (ev) => { if (ev.key === "Escape") exitExpanded(); };
+    document.addEventListener("fullscreenchange", fullscreenChanged);
+    document.addEventListener("keydown", escapeFullscreen);
+    if (v.captions.length) showCaption(0);
+    else { captions.hidden = true; select.hidden = true; prev.hidden = true; next.hidden = true; }
     const vocabulary = document.getElementById("youtube-vocabulary");
     vocabulary.querySelectorAll(".w").forEach((word) => { word.tabIndex = 0; word.setAttribute("role", "button"); word.setAttribute("aria-label", word.textContent + " · Türkçe anlamını gör"); });
     bindText(vocabulary, v);
     vocabulary.addEventListener("keydown", (ev) => { if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches(".w")) { ev.preventDefault(); ev.target.click(); } });
     markSaved(vocabulary);
-    videoCleanup = () => { frame.replaceChildren(); };
+    videoCleanup = () => {
+      disposed = true; attempt++; clearTimeout(loadingTimer); clearInterval(interval);
+      document.removeEventListener("fullscreenchange", fullscreenChanged);
+      document.removeEventListener("keydown", escapeFullscreen);
+      if (document.fullscreenElement === stage) document.exitFullscreen().catch(() => {});
+      tipParent.appendChild(Tip.el); document.body.style.overflow = oldOverflow;
+      if (player) player.destroy();
+      frame.replaceChildren();
+    };
   }
 
   function viewVideo(id) {
@@ -1583,6 +1777,7 @@
     player.addEventListener("error", () => { status.textContent = "Video yüklenemedi. İnternetini kontrol et veya aşağıdaki resmî sayfada izle bağlantısını kullan."; });
     player.addEventListener("ended", () => { status.textContent = "Film bitti. Konuşma seçicisinden bir sahneyi yeniden dinleyebilirsin."; });
     // Pause before the existing dictionary handler pins its tooltip.
+    captions.addEventListener("pointerdown", (ev) => { if (ev.target.closest(".w") && ev.isPrimary && ev.button === 0) player.pause(); });
     captions.addEventListener("click", (ev) => { if (ev.target.closest(".w")) player.pause(); });
     captions.addEventListener("keydown", (ev) => {
       if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches(".w")) { ev.preventDefault(); ev.target.click(); }
